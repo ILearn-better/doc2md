@@ -16,7 +16,10 @@ from pathlib import Path
 from ..config import IMAGE_DIR_NAME
 
 # pandoc 的两种图片写法
-_MD_IMG = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)(\s+\"[^\"]*\")?\)")
+# 注意 src 部分必须是 [^)]+?（允许空格）：pandoc 的 --extract-media 会写出
+# 绝对路径，Windows 下如 F:\Program Files\... 含空格，用 [^)\s]+ 会直接失配，
+# 导致行内小图（公式截图）保留绝对路径、没被收进 assets/。
+_MD_IMG = re.compile(r"!\[([^\]]*)\]\(([^)]+?)(\s+\"[^\"]*\")?\)")
 _HTML_IMG = re.compile(r"<img\b[^>]*?/?>", re.I)
 _HTML_SRC = re.compile(r'src="([^"]+)"', re.I)
 

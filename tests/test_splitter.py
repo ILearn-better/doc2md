@@ -139,9 +139,50 @@ def test_answer_restart():
               repr(doc["questions"][1]["answer"]))
 
 
+def test_pandoc_paper():
+    print("\n[6] pandoc 转义题号 1\\. 与（N）小问的形态竞争（组卷网类试卷）")
+    text = (
+        "### 一、选择题\n\n"
+        "1\\. 求 $1+1$ 的值（　　）\n\n"
+        "A. 1 B. 2 C. 3 D. 4\n\n"
+        "2\\. 求 ![img](assets/image4.png) 的绝对值（　　）\n\n"
+        "A. ![a](assets/image5.png) B. 2 C. 3 D. 4\n\n"
+        "### 二、解答题\n\n"
+        "3\\. 如图，完成下列小问\n\n"
+        "（1）画出图形\n\n"
+        "（2）说明理由\n"
+    )
+    doc = splitter.split(text, source="pandoc")
+    check("3 道题（（1）（2）是小问，不单独成题）", doc["count"] == 3,
+          "实际 %d" % doc["count"])
+    q = {x["number"]: x for x in doc["questions"]}
+    check("转义题号 1\\. 2\\. 3\\. 全部识别", set(q) == {1, 2, 3}, str(set(q)))
+    check("题1 选项 4 个", q[1]["options"] == ["1", "2", "3", "4"],
+          str(q[1]["options"]))
+    check("题2 图片选项不干扰递增链",
+          q[2]["options"] == ["![a](assets/image5.png)", "2", "3", "4"],
+          str(q[2]["options"]))
+    check("题3 题干保留小问（1）（2）",
+          "（1）" in q[3]["stem"] and "（2）" in q[3]["stem"],
+          repr(q[3]["stem"][:80]))
+
+
+def test_img_regex_spaces():
+    print("\n[7] markdown 图片路径含空格（Windows 绝对路径）也能改写")
+    from doc2md.parsers import docx_parser
+    m = docx_parser._MD_IMG.search(r"![](F:\Program Files\x\out/media/image4.png)")
+    check("含空格路径能匹配", m is not None)
+    if m:
+        check("src 完整取到右括号", m.group(2).endswith("image4.png"),
+              repr(m.group(2)))
+        rel = docx_parser._to_assets(m.group(2))
+        check("映射成 assets/image4.png", rel == "assets/image4.png", repr(rel))
+
+
 def main():
     for fn in (test_mixed, test_inline_glue, test_step_list,
-               test_section_restart, test_answer_restart):
+               test_section_restart, test_answer_restart,
+               test_pandoc_paper, test_img_regex_spaces):
         fn()
     print("\n" + "=" * 60)
     if _failures:

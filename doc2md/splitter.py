@@ -94,7 +94,9 @@ def strip_head(line):
 # ---------------------------------------------------------------------------
 _R_ZHANG = re.compile(
     r"^(?:第\s*(\d{1,4})\s*[题问]|习题\s*(\d{1,3})|例题\s*(\d{1,3}))\s*[:：、.]?\s*(.*)$")
-_R_NUM = re.compile(r"^(\d{1,3})(?!\d)\s*[.、)）]\s*(?!\d)(.*)$")
+# pandoc 会把「1.」转义成「1\.」（防止被当成有序列表），所以分隔符前要容忍一个 \。
+# 组卷网/试卷类 docx 几乎全是这种形态。
+_R_NUM = re.compile(r"^(\d{1,3})(?!\d)\s*\\?\s*[.、)）]\s*(?!\d)(.*)$")
 _R_PAREN = re.compile(r"^[（(]\s*(\d{1,3})\s*[)）]\s*(.*)$")
 
 _ANSWER_HEAD = re.compile(
@@ -114,7 +116,10 @@ _INLINE_TRIGGER = re.compile(
     r"选择|填空|已知|设|若|用|如图|解答|配方|分解因式))")
 
 # 选项标记：A. / A、 / （A） / A)
-_OPT_PREFIX = re.compile(r"[（(]?([A-Ha-h])\s*[)）.、．]\s*(?=\S)")
+# 负向后顾 (?<![A-Za-z0-9_]) 很关键：试卷选项多是图片（assets/image4.png），
+# 不加的话文件名里的「g)」（image4.png 的 g）会被当成 g 选项，插在 A/B 之间
+# 把字母递增链打断，导致整题选项识别失败。
+_OPT_PREFIX = re.compile(r"(?<![A-Za-z0-9_])[（(]?([A-Ha-h])\s*[)）.、．]\s*(?=\S)")
 _OPT_TAIL_LIMIT = 120     # 末项超过这个长度说明后面混进了别的内容
 
 # 答案显式标记
@@ -166,6 +171,7 @@ def split(text, source=""):
         }
     """
     rows = scan_lines(text)
+    allowed = _detect_kinds(rows)
 
     questions = []      # 题干区
     answers = []        # 答案区
@@ -212,8 +218,8 @@ def split(text, source=""):
             mode = "answer"
             continue
 
-        # ② 题号
-        q = _match_question(bare)
+        # ② 题号（只认 _detect_kinds 判定的主导形态）
+        q = _match_question(bare, allowed)
         if q is not None:
             number, rest, qkind = q
             # 题干区里题号回退、且没有换大节 → 说明进入了答案区（兜底，
@@ -258,18 +264,60 @@ def split(text, source=""):
     return result
 
 
-def _match_question(bare):
-    """-> (number, rest, kind) | None"""
-    m = _R_ZHANG.match(bare)
-    if m:
-        num = m.group(1) or m.group(2) or m.group(3)
-        return int(num), (m.group(4) or "").strip(), "第N题"
-    m = _R_NUM.match(bare)
-    if m:
-        return int(m.group(1)), m.group(2).strip(), "N."
-    m = _R_PAREN.match(bare)
-    if m:
-        return int(m.group(1)), m.group(2).strip(), "(N)"
+def _detect_kinds(rows):
+    """预扫描：判定这份文档的「主导题号形态」。
+
+    中文试卷/讲义里 `（1）（2）` 既可能是题号、也几乎必然是解答题的小问。
+    区分依据是形态竞争：只要文档里 `第N题` / `N.` 出现得足够多，`（N）`
+    就降级为小问、不参与切题；反之整份文档以 `（N）` 打头时它才是题号。
+
+    :return: 允许作为题号的形态集合
+    """
+    counts = {"第N题": 0, "N.": 0, "(N)": 0}
+    for raw, kind in rows:
+        if kind != KIND_TEXT:
+            continue
+        bare, _ = strip_head(raw)
+        if not bare or _ANSWER_HEAD.match(bare):
+            continue
+        if _R_ZHANG.match(bare):
+            counts["第N题"] += 1
+        elif _R_NUM.match(bare):
+            counts["N."] += 1
+        elif _R_PAREN.match(bare):
+            counts["(N)"] += 1
+
+    strong = counts["第N题"] + counts["N."]
+    if strong >= 3:
+        return {"第N题", "N."}
+    if counts["(N)"] >= 2 and counts["(N)"] > strong:
+        return {"(N)"}
+    if strong >= 1:
+        return {"第N题", "N."}
+    # 什么形态都不明显：全部放行，靠 flags 兜底（保持旧行为）
+    return {"第N题", "N.", "(N)"}
+
+
+def _match_question(bare, allowed=None):
+    """-> (number, rest, kind) | None
+
+    :param allowed: 允许的形态集合（None 表示不限制，供单点匹配测试用）
+    """
+    if allowed is None:
+        allowed = {"第N题", "N.", "(N)"}
+    if "第N题" in allowed:
+        m = _R_ZHANG.match(bare)
+        if m:
+            num = m.group(1) or m.group(2) or m.group(3)
+            return int(num), (m.group(4) or "").strip(), "第N题"
+    if "N." in allowed:
+        m = _R_NUM.match(bare)
+        if m:
+            return int(m.group(1)), m.group(2).strip(), "N."
+    if "(N)" in allowed:
+        m = _R_PAREN.match(bare)
+        if m:
+            return int(m.group(1)), m.group(2).strip(), "(N)"
     return None
 
 
@@ -466,7 +514,12 @@ def _build(questions, answers, sections, source):
             confidence = "medium"
 
         plain_stem = plain(raw_stem)
-        fp = hashlib.sha1((plain_stem + "|" + plain(" ".join(options))).encode("utf-8"))
+        # 组卷网类 docx 的题干常是一串公式截图，plain 出来是空串，指纹会全部
+        # 撞车 —— 把图片文件名一并掺进指纹材料兜底。
+        img_names = sorted(i.replace("\\", "/").rsplit("/", 1)[-1]
+                           for i in find_images(stem_full))
+        fp = hashlib.sha1((plain_stem + "|" + plain(" ".join(options))
+                           + "|" + ",".join(img_names)).encode("utf-8"))
         out_questions.append({
             "index": qi,
             "number": q["number"],
