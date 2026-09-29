@@ -93,7 +93,12 @@ python run.py 讲义.pdf --profile fast          # 速度优先档（见下）
 python run.py 讲义.pdf --no-tables             # 讲义没有表格时关掉表格识别，省 5 个子模型
 python run.py 讲义.pdf --no-formula            # 纯文字讲义：关掉公式识别（公式会退化成图片）
 python run.py samples/*.docx -o out/           # 批处理：同一进程，模型只加载一次
+python tests/test_splitter.py                  # 切题回归测试（35 项断言，纯规则、秒级）
 ```
+
+> **关于 `samples/`**：该目录被 `.gitignore` 排除（存放的是私有讲义原件）。要试跑请自备
+> 几份 docx/pdf 放进 `samples/`；只想验证切题逻辑的话，直接跑 `python tests/test_splitter.py`
+> 或看 `tests/sample_mixed.md`（覆盖选择/填空/解答三种题型的回归样本）。
 
 ### `--profile`：速度档位（仅 PDF）
 
