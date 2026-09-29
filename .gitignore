@@ -1,0 +1,22 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---- 运行产物 ----
+out/
+_raw/
+# PaddleOCR 落盘的中间页目录
+**/_raw/
+*.log
+
+# ---- 临时目录 ----
+_p32/
+.tmp/
+
+# ---- 真实讲义样本 ----
+# samples/ 下是私有的讲义原件（含学生版），不入公开仓库。
+# 需要试跑时自备几份 docx/pdf 放进这个目录即可。
+samples/

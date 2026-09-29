@@ -1,0 +1,35 @@
+# ============================================================
+# doc2md 依赖
+#
+# 安装（按顺序，两条命令都要）：
+#   1) pip install pypandoc-binary python-docx markdown beautifulsoup4 lxml pymupdf
+#      -i https://mirrors.aliyun.com/pypi/simple/
+#
+#   2) paddlepaddle 在清华/阿里镜像上同步不全，必须走 Paddle 官方 CPU 源：
+#      pip install paddlepaddle -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+#      pip install "paddlex[ocr]" -i https://mirrors.aliyun.com/pypi/simple/
+#      pip install paddleocr -i https://mirrors.aliyun.com/pypi/simple/
+#
+#   ⚠ paddleocr 只装 [ocr-core]，PP-StructureV3 需要完整的 paddlex[ocr]，
+#     漏掉会报 `PP-StructureV3 requires additional dependencies`。
+#
+#   3) 若用 pip 批量装遇到沙箱/安全软件的"批量删除"拦截，加 --no-cache-dir。
+# ============================================================
+
+# ---- docx 路线 ----
+pypandoc-binary>=1.13     # 自带 pandoc 二进制：docx → markdown，公式转 LaTeX
+python-docx>=1.1.0        # docx 结构兜底读取
+markdown>=3.5             # markdown → HTML
+beautifulsoup4>=4.12      # HTML 处理
+lxml>=5.0
+
+# ---- pdf 路线（PaddleOCR PP-StructureV3）----
+# 实测可用组合：paddlepaddle 3.4.0 + paddleocr 3.7.0 + paddlex[ocr] 3.7.2
+# （Windows/CPU 必须 enable_mkldnn=False，见 doc2md/parsers/pdf_parser.py 注释）
+# 注意：paddlepaddle 不要降级到 3.2.2 —— 实测开了 oneDNN 虽不崩但更慢，
+#      关闭 oneDNN 的 3.4.0 是当前最优解。提速用 run.py 的 --profile fast
+#      / --no-tables / --no-formula，不要换 paddle 版本。
+paddlepaddle>=3.4
+paddleocr>=3.7
+paddlex[ocr]>=3.7         # PP-StructureV3 必需
+pymupdf>=1.24.0           # PDF 基础操作与预览渲染
