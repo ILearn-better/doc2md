@@ -211,8 +211,12 @@ def _collect_images(raw_dir, out_dir, md_path, log):
             moved += 1
 
     text = md_path.read_text(encoding="utf-8", errors="ignore")
+    # PP-StructureV3 的图片引用有两种形态：markdown 的 ![](imgs/…) 和
+    # 行内 HTML 的 <img src="imgs/…">，两种都要改写。
     for pat in ("imgs/", "images/", "img/"):
         text = text.replace("(" + pat, "(" + IMAGE_DIR_NAME + "/")
+        text = text.replace('src="' + pat, 'src="' + IMAGE_DIR_NAME + "/")
+        text = text.replace("src='" + pat, "src='" + IMAGE_DIR_NAME + "/")
     md_path.write_text(text, encoding="utf-8")
 
     shutil.rmtree(raw_dir, ignore_errors=True)

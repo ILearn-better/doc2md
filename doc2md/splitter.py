@@ -76,11 +76,16 @@ def scan_lines(text):
 _LEAD_HASH = re.compile(r"^[ \t]*(?:#{1,6}[ \t]*)+")
 _BOLD_WRAP = re.compile(r"^(?:\*\*|__)(.+?)(?:\*\*|__)$")
 _BLOCKQUOTE = re.compile(r"^[ \t]*>[ \t]?")
+# 单行居中 div 包装（OCR 输出常见），剥掉开/闭标签
+_DIV_WRAP = re.compile(r"^<div[^>]*>|</div>$")
 
 
 def strip_head(line):
     """-> (用于匹配的裸文本, 去空白后的原行)"""
     s = line.strip()
+    # PP-StructureV3 会把居中文本包成 <div style="text-align: center;">18.随机调查…</div>，
+    # 不剥壳的话题号不在行首、整题漏切。
+    s = _DIV_WRAP.sub("", s)
     s = _BLOCKQUOTE.sub("", s)
     s = _LEAD_HASH.sub("", s)
     m = _BOLD_WRAP.match(s)
@@ -95,12 +100,18 @@ def strip_head(line):
 _R_ZHANG = re.compile(
     r"^(?:第\s*(\d{1,4})\s*[题问]|习题\s*(\d{1,3})|例题\s*(\d{1,3}))\s*[:：、.]?\s*(.*)$")
 # pandoc 会把「1.」转义成「1\.」（防止被当成有序列表），所以分隔符前要容忍一个 \。
-# 组卷网/试卷类 docx 几乎全是这种形态。
-_R_NUM = re.compile(r"^(\d{1,3})(?!\d)\s*\\?\s*[.、)）]\s*(?!\d)(.*)$")
+# 组卷网/试卷类 docx 几乎全是这种形态。OCR 输出里半角「1.」与全角「1．」混用，
+# 分隔符类必须两者都收（漏掉全角．会整题漏切）。
+_R_NUM = re.compile(r"^(\d{1,3})(?!\d)\s*\\?\s*[.．、)）]\s*(?!\d)(.*)$")
 _R_PAREN = re.compile(r"^[（(]\s*(\d{1,3})\s*[)）]\s*(.*)$")
 
+# 答案区标题。不能只精确枚举——中考/组卷网类试卷的标题五花八门：
+# 「参考答案与试题解析」「答案及解析」「参考答案」…核心是「答案/解析/解答」打头。
 _ANSWER_HEAD = re.compile(
-    r"^(?:参考|标准)?\s*(?:答案|解答|解析|答案与解析|答案解析|参考答案与解析)\s*$")
+    r"^(?:"
+    r"(?:参考|标准)?答案(?:与|及|和|加)?(?:试题|题目|真题|习题)?(?:解析|解答|详析)?"
+    r"|解析|解答"
+    r")\s*$")
 
 _SECTION_HASH = re.compile(r"^\s{0,3}#{1,6}\s+\S")
 _SECTION_ZH = re.compile(r"^[一二三四五六七八九十]{1,3}\s*[、.．]\s*\S")
@@ -111,7 +122,7 @@ _SECTION_MAX_LEN = 48
 # 数字后面紧跟题干动词时，即使前面没有空白也切开。
 _INLINE_TRIGGER = re.compile(
     r"(?<=[\s\)\]\}。，,;；a-zA-Z0-9])"
-    r"(\d{1,2})\s*[.、]\s*"
+    r"(\d{1,2})\s*[.．、]\s*"
     r"(?=(?:解方程|解不等式|解方程组|因式分解|计算|化简|求值|求|证明|作图|画出|判断|"
     r"选择|填空|已知|设|若|用|如图|解答|配方|分解因式))")
 
